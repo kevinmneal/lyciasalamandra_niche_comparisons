@@ -1,0 +1,189 @@
+---
+title: "Lyciasalamandra niche comparisons using CHELSA1.1 bioclim"
+author: "Kevin Neal"
+date: "September 23, 2016"
+output: html_document
+---
+
+```{r setup, include=F}
+#install.packages(c("viridis", "ggplot2", "gridExtra", "dismo", "raster", "sp", "rJava", "rgdal", "devtools", "rmarkdown")) # run this code if these are not yet installed
+
+#library(devtools)
+#install_github("danlwarren/ENMTools") # run this if ENMTools is not yet installed
+library(ENMTools)
+library(raster)
+library(viridis)
+library(ggplot2)
+library(gridExtra)
+
+# Do niche identity and niche similarity/background tests using the ENMTools R package;
+# do the pairwise tests using L. atifi atifi, L. luschani, and L. fazilie. Do these 3 initially, then do more comparisons later
+
+par(mfrow=c(1,1))
+
+```
+
+
+
+```{r making an ENMTools object}
+
+### try to do some experiments/trials to see what background radius works better. e.g. I tried background points sampled from both 10km and 20km and the niche models look slightly different. I wonder if it will have the most significant impact on the background/similarity tests?
+
+setwd("C:/Users/shafferlab/Documents/Kevin/Lyciasalamandra") # directory where the GPS points are located
+lycia.all <- read.csv(file="Lyciasalamandra_localities_updated_2016-09-21_adj.csv")
+
+setwd("C:/Users/shafferlab/Documents/Kevin/CHELSA1.1/Turkey") # directory where the bioclim raster files are located
+
+bioclim.tk <- stack(list.files(pattern="tk.asc$")) # stores bioclim raster files
+bioclim.tk.masked <- mask(bioclim.tk, background.raster.buffer(lycia.all[,c("Longitude","Latitude")], 50000, mask = bioclim.tk[[1]])) # masks based on a buffered range raster for all Lyciasalamandra to the ENM isn't predicting in far-off areas, and to reduce computation time
+bioclim.tk.masked <- setMinMax(bioclim.tk.masked) # necessary step for ENMTools analyses
+
+setwd("C:/Users/shafferlab/Documents/Kevin/Lyciasalamandra")
+
+luschani2 <- enmtools.species()
+luschani2$species.name <- "L. luschani"
+luschani2$presence.points <- lycia.all[lycia.all$species=="Lluschani",c("Longitude","Latitude")]
+luschani2$range <- background.raster.buffer(lycia.all[,c("Longitude","Latitude")], 50000, mask = bioclim.tk.masked[[1]]) # should I make the range based on the species, or all of them? probably all of them, right? The background raster is necessary because it's the surface over which the ENM values are calculated
+luschani2$background.points <- background.points.buffer(luschani2$presence.points,
+                                                        20000, 
+                                                        n=1000, 
+                                                        mask = bioclim.tk[[1]])
+
+plot(luschani2$range)
+points(luschani2$background.points)
+
+atifi.atifi2 <- enmtools.species()
+atifi.atifi2$species.name <- "L. atifi atifi"
+atifi.atifi2$presence.points <- lycia.all[lycia.all$subspecies=="Latifiatifi",c("Longitude","Latitude")]
+atifi.atifi2$range <- background.raster.buffer(lycia.all[,c("Longitude","Latitude")], 50000, mask = bioclim.tk.masked[[1]])
+atifi.atifi2$background.points <- background.points.buffer(atifi.atifi2$presence.points,
+                                                        20000, 
+                                                        n=1000, 
+                                                        mask = bioclim.tk[[1]])
+
+fazilae2 <- enmtools.species()
+fazilae2$species.name <- "L. fazilae"
+fazilae2$presence.points <- lycia.all[lycia.all$species=="Lfazilae",c("Longitude","Latitude")]
+fazilae2$range <- background.raster.buffer(lycia.all[,c("Longitude","Latitude")], 50000, mask = bioclim.tk[[1]])
+fazilae2$background.points <- background.points.buffer(fazilae2$presence.points,
+                                                        20000, 
+                                                        n=1000, 
+                                                        mask = bioclim.tk[[1]])
+
+# plot to check localities on map
+plot(bioclim.tk[[1]], col=viridis(256))
+points(luschani2$background.points)
+points(atifi.atifi2$background.points)
+points(fazilae2$background.points)
+points(luschani2$presence.points, col="red")
+points(atifi.atifi2$presence.points, col="blue")
+points(fazilae2$presence.points, col="green")
+
+
+# when you use a narrow background around just the species in question, the suitability projections are pretty wide, but I think that's the point for doing niche identity and similarity/background analyses, rather than using them explicitly for distribution modeling
+
+```
+
+
+
+```{r niche identity tests redux}
+# should do 99 or more reps to properly show significance - might take awhile to run, though
+
+luschani2.atifi2.id <- identity.test(species.1 = luschani2, 
+                                   species.2 = atifi.atifi2, 
+                                   env = bioclim.tk.masked, 
+                                   type = "mx", 
+                                   nreps = 9)
+
+luschani2.atifi2.id
+
+# plots to show niche models side by side
+LA.sp1plot <- plot(luschani2.atifi2.id$empirical.species.1.model) + ggtitle("L. luschani Maxent model")
+LA.sp2plot <- plot(luschani2.atifi2.id$empirical.species.2.model) + ggtitle("L. atifi Maxent model")
+grid.arrange(LA.sp1plot, LA.sp2plot, nrow=2) # uses package gridExtra; also look into package cowplot
+
+luschani2.fazilae2.id <- identity.test(species.1 = luschani2, 
+                                   species.2 = fazilae2, 
+                                   env = bioclim.tk.masked, 
+                                   type = "mx", 
+                                   nreps = 9)
+
+luschani2.fazilae2.id
+
+# making plots from ENMTools objects uses ggplot2, so to add to the plots use ggplot2 arguments
+
+LF.sp1plot <- plot(luschani2.fazilae2.id$empirical.species.1.model) + ggtitle("L. luschani Maxent model")
+LF.sp2plot <- plot(luschani2.fazilae2.id$empirical.species.2.model) + ggtitle("L. fazilae Maxent model")
+grid.arrange(LF.sp1plot, LF.sp2plot, nrow=2) # uses package gridExtra; also look into package cowplot
+
+atifi2.fazilae2.id <- identity.test(species.1 = atifi.atifi2, 
+                                   species.2 = fazilae2, 
+                                   env = bioclim.tk.masked, 
+                                   type = "mx", 
+                                   nreps = 9)
+atifi2.fazilae2.id
+
+AF.sp1plot <- plot(atifi2.fazilae2.id$empirical.species.1.model) + ggtitle("L. atifi Maxent model")
+AF.sp2plot <- plot(atifi2.fazilae2.id$empirical.species.2.model) + ggtitle("L. fazilae Maxent model")
+grid.arrange(AF.sp1plot, AF.sp2plot, nrow=2) # uses package gridExtra; also look into package cowplot
+
+
+
+```
+
+
+```{r niche background tests}
+
+### L. luschani and L. atifi
+# asymmetrical: L. luschani presence vs. L. atifi background
+luschani2.atifi2.bg.asym <- background.test(species.1 = luschani2, species.2 = atifi.atifi2, env = bioclim.tk.masked, type = "mx", nreps = 9, test.type = "asymmetric" )
+luschani2.atifi2.bg.asym
+
+# asymmetrical: L. luschani background vs. L. atifi presence
+atifi2.luschani2.bg.asym <- background.test(species.1 = atifi.atifi2, species.2 = luschani2, env = bioclim.tk.masked, type = "mx", nreps = 9, test.type = "asymmetric" )
+atifi2.luschani2.bg.asym 
+
+# symmetrical: L. luschani background vs. L. atifi background
+luschani2.atifi2.bg.sym <- background.test(species.1 = luschani2, species.2 = atifi.atifi2, env = bioclim.tk.masked, type = "mx", nreps = 9, test.type = "symmetric" )
+luschani2.atifi2.bg.sym 
+
+
+
+### L. luschani and L. fazilae
+# asymmetrical: L. luschani presence vs. L. fazilae background
+luschani2.fazilae2.bg.asym <- background.test(species.1 = luschani2, species.2 = fazilae2, env = bioclim.tk.masked, type = "mx", nreps = 9, test.type = "asymmetric" )
+luschani2.fazilae2.bg.asym 
+
+# asymmetrical: L. luschani background vs. L. fazilae presence
+fazilae2.luschani2.bg.asym <- background.test(species.1 = fazilae2, species.2 = luschani2, env = bioclim.tk.masked, type = "mx", nreps = 9, test.type = "asymmetric" )
+fazilae2.luschani2.bg.asym 
+
+# symmetrical: L. luschani background vs. L. fazilae background
+luschani2.fazilae2.bg.sym <- background.test(species.1 = luschani2, species.2 = fazilae2, env = bioclim.tk.masked, type = "mx", nreps = 9, test.type = "symmetric" )
+luschani2.fazilae2.bg.sym 
+
+
+
+### L. atifi and L. fazilae
+# asymmetrical: L. atifi presence vs. L. fazilae background
+atifi2.fazilae2.bg.asym <- background.test(species.1 = atifi.atifi2, species.2 = fazilae2, env = bioclim.tk.masked, type = "mx", nreps = 9, test.type = "asymmetric" )
+atifi2.fazilae2.bg.asym 
+
+# asymmetrical: L. atifi background vs. L. fazilae presence
+fazilae2.atifi2.bg.asym <- background.test(species.1 = fazilae2, species.2 = atifi.atifi2, env = bioclim.tk.masked, type = "mx", nreps = 9, test.type = "asymmetric" )
+fazilae2.atifi2.bg.asym 
+
+# symmetrical: L. atifi background vs. L. fazilae background
+atifi2.fazilae2.bg.sym <- background.test(species.1 = atifi.atifi2, species.2 = fazilae2, env = bioclim.tk.masked, type = "mx", nreps = 9, test.type = "symmetric" )
+atifi2.fazilae2.bg.sym 
+
+
+
+
+```
+
+
+
+
+
+
